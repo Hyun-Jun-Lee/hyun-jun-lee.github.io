@@ -1,0 +1,185 @@
+---
+title: "Celery" #Article title.
+date: 2023-06-01
+category: [PYTHON, PYCORN] #One, more categories or no at all.
+tag: [pycorn]
+---
+
+💡 __pycon korea 19 이지훈__
+
+
+## Celery?
+
+메세지 전달을 기반으로 한 비동기 task Queue
+
+- client : 작업 요청
+- Worker : 작업 수행
+- Broker : 메세지 전달
+
+- AMQP(Advanced Message Queueing Protocol)
+    - Celery의 핵심 프로토콜
+        
+        <img width="736" alt="스크린샷 2023-05-31 오후 11 05 23" src="https://github.com/Hyun-Jun-Lee/hyun-jun-lee.github.io/assets/76996686/409c308d-8bc5-4d90-b80b-d4c9f6a5b91a">
+
+        
+    - Producer는 메세지를 생성하여 Broker에게 보냄
+    - Broker 는 Confirm(확인)을하고 consumer에게 전달
+    - Consumer는 Broker Acknowledge를 받아서 안정적으로 메세지 전달하게 함
+
+## 안정적으로 완료하기
+
+### Late ACK
+
+Celery Worker가 ack 하는 시점
+
+- Default
+    - Worker가 task 실행하기 직전에 ack
+    - 실행되지 못하더라도 Broker는 ack를 받았기 때문에 큐에서 해당 task를 제거시킴
+- `acks_late=True`
+    - task 실행이 다 완료되는 시점에서 ack
+    - task가 실행되지 못해도 아직 큐에 남아있어서 다시 실행가능한 안정성 확보
+    - 그러나 중복 실행 될 수도 있음!
+    
+    ```python
+    @app.task(acks_late=True)
+    def my_task(x):
+        result = x * 2
+        return result
+    ```
+    
+
+### Task Retry
+
+- task retry 옵션
+    - Atomicity
+    - 예상가능한 Exception에만 적용
+    
+    ```python
+    @app.task(autoretry_for=(ConnectionError,), # 자동 재시도를 수행할 예외 클래스
+    					retry_backoff=2, # 재시도 시간 간격(secodns)
+    					retry_kwargs={'max_retries':3}) # 최대 재시도 수 지정
+    def send_mail(..):
+    	...
+    ```
+    
+
+### Visibility Timeout
+
+메시지가 작업자에게 전달된 후에 얼마 동안 다른 작업자가 해당 메시지를 처리할 수 없는 상태로 유지하는 시간 설정, 즉 해당 시간이 지나면 다른 worker에게 task가 배정된다.
+
+```python
+@app.task(bind=True, visibility_timeout=10)
+def my_task_with_visibility_timeout(self, x):
+    result = x * 2
+    return result
+```
+
+작업자가 해당 메시지를 받은 후 10초 동안 다른 작업자가 동일한 메시지를 처리할 수 없다. 
+
+만약 10초 내에 작업자가 해당 메시지를 처리하지 않으면 메시지는 다시 사용 가능한 상태로 간주됨
+
+그래서 장시간 실행되는 task라면 `visibility_timeout` 옵션을 길게 설정하는 것이 중복 실행 방지됨
+
+## 효율적으로 처리하기
+
+- 작업의 처리에 따라 다르게 처리
+    - IO / CPU
+    - 중요도
+    - 수행시간
+    - 실행 빈도
+
+### Limits
+
+- Time Limit
+    - task가 일정 시간 이상 실행되고 있으면 종료
+    - `soft_time_limit=60` , 60초가 지나면 **`SoftTimeLimitExceeded` raise**
+    - `hard_time_limit=60`
+    - 글로벌 설정도 가능(`app.conf.worker_soft_time_limit = 60`)
+
+### Prefetch
+
+- worker_prefetch_multiplier
+
+### Gevent/ Eventlet
+
+- Gevent
+    
+    ```python
+    from celery import Celery
+    from gevent import monkey
+    
+    # gevent가 I/O 작업을 비동기로 처리할 수 있도록 파이썬 내장 모듈들을 대체하거나 수정하는 역할
+    monkey.patch_all()
+    
+    app = Celery('tasks', broker='redis://localhost:6379', backend='redis://localhost:6379')
+    
+    @app.task
+    def my_task(x):
+        # I/O 작업 수행
+        perform_io_operation(x)
+        return x
+    ```
+    
+- Eventlet
+    
+    ```python
+    from celery import Celery
+    import eventlet
+    
+    eventlet.monkey_patch()
+    
+    app = Celery('tasks', broker='redis://localhost:6379', backend='redis://localhost:6379')
+    
+    @app.task
+    def my_task(x):
+        # I/O 작업 수행
+        perform_io_operation(x)
+        return x
+    ```
+    
+
+### Prefork
+
+## Use Multi Queue
+
+- Queue 설정
+
+```python
+from celery import Celery
+from kombu import Queue
+
+# Celery app 객체 생성하고 app이름을 test
+app = Celery('test')
+# 환경 변수 DJANGO_SETTINGS_MODULE을 "config.settings"로 설정
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+# Django의 설정 파일에서 CELERY 네임스페이스에 해당하는 설정 값을 로드하는 역할
+app.config_from_object('django.conf:settings', namespace='CELERY')
+# task에 큐를 지정하지 않았을 때 기본으로 사용될 큐 지정
+app.conf.task_default_queue = 'default'
+app.conf.task_queues = (
+	Queue('slow_tasks', routing_key='slow.#'),
+	Queue('quick_tasks', routing_key='quick.#'),
+)
+```
+
+- task
+
+```python
+@app.task
+def slow_task(x):
+	time.sleep(x)
+	return x
+
+@app.task
+def quick_task(x):
+	return x
+
+for i in range(10, 100):
+	slow_task.apply_async(args=[i], queue='slow_tasks')
+
+quick_task.apply_async(args=[100], queue='quick_tasks')
+```
+
+- worker 실행
+    - `celery -A tasks worker -Q slow_tasks --loglevel=info`
+    - `celery -A tasks worker -Q quick_tasks --loglevel=info`

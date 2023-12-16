@@ -1,0 +1,294 @@
+---
+title: "airflow with mysql docker compose" #Article title.
+date: 2023-07-28
+category: [AIRFLOW,AIRFLOW] #One, more categories or no at all.
+tag: [airflow, python]
+---
+
+```
+version: '3'
+x-airflow-common:
+  &airflow-common
+  # In order to add custom dependencies or upgrade provider packages you can use your extended image.
+  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
+  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.3.3}
+  build:
+    context: .
+    dockerfile: airflow-docker
+  # build: .
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: mysql+pymysql://root:${DATABASE_PASSWORD}@mysql/airflow
+    # For backward compatibility, with Airflow <2.3
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: mysql+pymysql://root:${DATABASE_PASSWORD}@mysql/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+mysql+mysqlconnector://root:${DATABASE_PASSWORD}@mysql/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    AIRFLOW_MYSQL_ALCHEMY: mysql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${WAREHOUSE_DB}?charset=utf8
+    
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    mysql:
+      condition: service_healthy
+
+services:
+  mmacast:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+    stdin_open: true
+    tty: true
+    # command: >
+    #   sh -c "uvicorn main:app --host 0.0.0.0 --prot 8000"
+    env_file:
+      - ".env"
+    environment:
+      - DEBUG=1
+      - TZ=Asia/Seoul
+
+
+  mysql:
+    image: mysql:8
+    restart: always
+    volumes:
+      - mysql-db-data:/var/lib/mysql
+      - ./mysql_init/:/docker-entrypoint-initdb.d/
+    command: mysqld --character-set-server=utf8 --collation-server=utf8_general_ci
+    environment:
+      - MYSQL_DATABASE=${DATABASE_NAME}
+      - MYSQL_ROOT_PASSWORD=${DATABASE_PASSWORD}
+      - MYSQL_PASSWORD=${DATABASE_PASSWORD}
+      - TZ=Asia/Seoul
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 30s
+      retries: 10
+
+  redis:
+    image: redis:latest
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+    restart: always
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - 8080:8080
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 21600s
+      timeout: 20s
+      retries: 3
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-worker:
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    environment:
+      <<: *airflow-common-env
+      # Required to handle warm shutdown of the celery workers properly
+      # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
+      DUMB_INIT_SETSID: "0"
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    # yamllint disable rule:line-length
+    command:
+      - -c
+      - |
+        function ver() {
+          printf "%04d%04d%04d%04d" $${1//./ }
+        }
+        airflow_version=$$(AIRFLOW__LOGGING__LOGGING_LEVEL=INFO && gosu airflow airflow version)
+        airflow_version_comparable=$$(ver $${airflow_version})
+        min_airflow_version=2.2.0
+        min_airflow_version_comparable=$$(ver $${min_airflow_version})
+        if (( airflow_version_comparable < min_airflow_version_comparable )); then
+          echo
+          echo -e "\033[1;31mERROR!!!: Too old Airflow version $${airflow_version}!\e[0m"
+          echo "The minimum Airflow version supported: $${min_airflow_version}. Only use this or higher!"
+          echo
+          exit 1
+        fi
+        if [[ -z "${AIRFLOW_UID}" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
+          echo "If you are on Linux, you SHOULD follow the instructions below to set "
+          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
+          echo "For other operating systems you can get rid of the warning with manually created .env file:"
+          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/start/docker.html#setting-the-right-airflow-user"
+          echo
+        fi
+        one_meg=1048576
+        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
+        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
+        disk_available=$$(df / | tail -1 | awk '{print $$4}')
+        warning_resources="false"
+        if (( mem_available < 4000 )) ; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
+          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
+          echo
+          warning_resources="true"
+        fi
+        if (( cpus_available < 2 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
+          echo "At least 2 CPUs recommended. You have $${cpus_available}"
+          echo
+          warning_resources="true"
+        fi
+        if (( disk_available < one_meg * 10 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
+          echo "At least 10 GBs recommended. You have $$(numfmt --to iec $$((disk_available * 1024 )))"
+          echo
+          warning_resources="true"
+        fi
+        if [[ $${warning_resources} == "true" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
+          echo "Please follow the instructions to increase amount of resources available:"
+          echo "   https://airflow.apache.org/docs/apache-airflow/stable/start/docker.html#before-you-begin"
+          echo
+        fi
+        mkdir -p /airflow/logs /airflow/dags /airflow/plugins /airflow/dags/logging
+        chown -R "${AIRFLOW_UID}:0" /airflow/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    # yamllint enable rule:line-length
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    user: "0:0"
+    volumes:
+      - .:/sources
+
+  airflow-cli:
+    <<: *airflow-common
+    profiles:
+      - debug
+    environment:
+      <<: *airflow-common-env
+      CONNECTION_CHECK_MAX_COUNT: "0"
+    # Workaround for entrypoint issue. See: https://github.com/apache/airflow/issues/16252
+    command:
+      - bash
+      - -c
+      - airflow
+
+  # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
+  # or by explicitly targeted on the command line e.g. docker-compose up flower.
+  # See: https://docs.docker.com/compose/profiles/
+  flower:
+    <<: *airflow-common
+    command: celery flower
+    profiles:
+      - flower
+    ports:
+      - 5555:5555
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  mysql-db-data:
+```
+
+
+1. **`<<: *airflow-common`**: 다른 YAML 파일에서 정의된 **`airflow-common`**이라는 설정을 가져와 현재 설정에 병합합니다.
+2. **`entrypoint: /bin/bash`**: 컨테이너의 진입점(entrypoint)을 **`/bin/bash`**로 설정합니다.
+3. **`command`**: 컨테이너가 실행될 때 실행되는 명령을 정의합니다. 이 부분은 **`bash`** 쉘 스크립트로 작성되어 있습니다.
+    - **`ver()`** 함수는 버전을 비교하기 위한 함수입니다.
+    - **`airflow_version`** 변수에는 Airflow의 버전 정보가 저장됩니다.
+    - **`airflow_version_comparable`** 변수에는 버전 정보를 숫자로 변환한 값이 저장됩니다.
+    - **`min_airflow_version`** 변수에는 최소 지원 Airflow 버전이 저장됩니다.
+    - **`min_airflow_version_comparable`** 변수에는 최소 지원 버전을 숫자로 변환한 값이 저장됩니다.
+    - Airflow 버전이 최소 버전보다 낮으면 에러 메시지를 출력하고 종료합니다.
+    - **`AIRFLOW_UID`** 환경 변수가 설정되지 않은 경우 경고 메시지를 출력합니다.
+    - 사용 가능한 메모리, CPU 및 디스크 공간이 일정 기준에 미달하는 경우에도 경고 메시지를 출력합니다.
+    - **`/sources/logs`**, **`/sources/dags`**, **`/sources/plugins`** 디렉토리를 생성하고, 해당 디렉토리의 소유자를 **`${AIRFLOW_UID}:0`**로 변경합니다.
+    - 마지막으로 **`/entrypoint airflow version`** 명령을 실행하여 Airflow 버전을 출력합니다.
+4. **`environment`**: 컨테이너 환경 변수를 설정합니다. **`airflow-common-env`**에서 정의된 기본 환경 변수를 가져오고, 추가적인 환경 변수를 정의합니다. 여기서는 데이터베이스 업그레이드와 Airflow 웹 사용자 생성, 사용자 이름 및 비밀번호를 설정합니다. 추가적으로 PIP로 설치할 추가적인 요구 사항을 설정할 수도 있습니다.
+5. **`user: "0:0"`**: 컨테이너 내에서 실행되는 프로세스의 사용자를 root로 설정합니다.
+6. **`volumes`**: 호스트 파일 시스템과 컨테이너 간의 볼륨 마운트를 설정합니다. 현재 디렉토리(**`.`**)를 컨테이너의 **`/sources`** 디렉토리에 마운트하여 로그, DAG 파일 및 플러그인 파일을 공유합니다.

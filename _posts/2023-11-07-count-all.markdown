@@ -1,0 +1,27 @@
+---
+title: "SqlAlchemy count, all" #Article title.
+date: 2023-11-07
+category: [DB, SQL] #One, more categories or no at all.
+tag: [sql,db]
+---
+
+# SqlAlchemy count(), all()
+
+사이드 프로젝트에서 list API에 filtering하는 기능이 있는데, 여기서 필터링 항목을 선택하는 뷰에서 몇개의 객체가 검색 될지 count를 미리 보여줘야하는 상황이었다.
+이미 list API에서 total_count를 반환하도록 만들어 뒀기 때문에, list API를 두번 호출 하면 되지 않을까 생각했는데 문득 그러면 쿼리 결과를 다 읽어오는 행위를 2번 해야하는건데
+객체가 많아진다면 느려지지 않을까? 라는 궁금증이 생겼다.
+
+그렇게해서 총 객체의 count만 체크하는 쿼리가 검색하는 쿼리와 작동 방식이 다를지 공부해보게 되었다.
+
+1. 쿼리 최적화
+    - count()는 단순이 row의 수를 계산하는 것으로, DB는 검색 결과의 모든 column을 가져오지 않고 각 row를 순회하면서 count만 세는 방식으로 작동한다.
+    - all()은 실제 해당되는 모든 row,column을 가져와야 하기 때문에 DB에 더 많은 작업이 요구된다. 
+
+2. 네트워크 대역폭
+    - all()은 반환되는 모든 데이터가 어플리케이션 서버로 전송되어야 하기 때문에, 결과가 매우 큰 경우 부하가 걸릴 수 있음
+        - 실제 SQL Server에서 transaction log를 읽어올 때 검색된 데이터의 양이 너무 많아서 서버 메모리가 터진적이 있음
+    - 반면, count()는 결과 숫자만 반환하면 됨
+
+3. 캐싱
+    - count() 쿼리는 캐싱할 수 있어 반복적으로 비슷한 count 쿼리가 수행될 경우 훨씬 빠른 응답이 가능하다.
+    - all() 쿼리는 많은 데이터를 필요로 하기 때문에 캐싱이 어려움 

@@ -1,0 +1,142 @@
+---
+title: "zip(), unpacking 활용" #Article title.
+date: 2023-05-22
+category: [PYTHON, PYTHON] #One, more categories or no at all.
+tag: [python]
+---
+
+# zip()
+
+list 타입을 다룰 때, `리스트 컴프리헨션` 을 사용하면 소스 list에서 새로운 list를 파생시키기 쉽다.
+
+```
+names = ['aaaa','bb','ccccc']
+cnt_list = [len(n) for n in names]
+
+>>> [4,2,5]
+
+```
+
+만들어진 list의 각 원소는 소스 list에서 같은 인덱스 위치에 있는 원소와 관련이 있어서, 두 리스트를 동시에 이터레이션 하 경우 names 소스 리스트의 길이를 사용하면 된다.
+
+```
+longest_name = None
+max_count = 0
+
+for i in range(len(names)):
+	cnt = cnt_list[i]
+    if cnt > max_count:
+    	longest_name = names[i]
+        max_count = cnt
+
+print(longest_name)
+
+>>> aaaa
+
+```
+
+위 코드를 시각적으로 깔끔하게 표현하기 위해 파이썬의 내장함수인 `zip`을 이용한다.
+
+```
+for name, cnt in zip(names, cnt):
+	if cnt > max_count:
+    	longest_name = name
+        max_count = cnt
+
+```
+
+입력 이터레이터의 길이가 서로 다르다면, zip 함수는 짧은 이터레이터의 길이를 기준으로 값을 반환한다. 그래서 'names' 리스트에 추가된 'ddd'가 출력되지 않는다.
+
+```
+names.append('ddd')
+for name, count in zip(names, cnt):
+	print(name)
+
+ >>> aaaa
+ >>> bb
+ >>> ccccc
+
+```
+
+이러한 단점을 보완하기 위해서는 itertools 내장 모듈에 들어 있는 zip_longest를 사용하면 된다.
+
+```
+import itertools
+
+for name, cnt in itertools.zip_longest(names,cnt):
+	print(f'{name}:{cnt}')
+
+>>> aaaa:4
+>>> bb:2
+>>> ccccc:5
+>>> ddd:None
+
+```
+
+# unpacking
+
+
+리스트 슬라이싱으로 숫자 리스트에서 가장 작은 숫자와 가장 큰 숫자를 가져오는 코드를 작성해보면
+
+```
+num = [0,4,5,10,20,19,25]
+num_desc = sorted(num, reverse=True)
+
+oldest = num_desc[0]
+second = num_desc[1]
+other = num_desc[2:]
+
+```
+
+위와 같은데, 코드 양도 많고 깔끔하지 않다. 언패킹을 활용하면 훨신 좋은 코드를 짤 수 있다.
+
+```python
+oldest, second, *other = num_desc
+print(oldest, second, [*other])
+
+>>> 25 0 [20,19,10,5,4]
+
+*other, oldest, second = num_desc
+print([*other], oldest, second)
+
+>>> [25, 20, 19, 10, 5] 4 0
+
+```
+
+하지만 별표식이 포함된 언패킹은 단독으로는 사용할 수 없다. 그리고 하나의 언패킹에 2개의 별표식도 사용할 수 없다.
+
+```
+*other = num_desc
+
+*first, *second = num_desc
+>>>
+syntaxError : ...
+```
+
+하지만 여려 계층으로 이루어진 구조를 언패킹 하는 경우에서는, 서로 다른 부분에 포함되는 한 별표 식을 여럿 사용해도 된다.
+
+```python
+car_inventory = {
+    '시내': ('그랜저', '아반테', '티코'),
+    '공항': ('제네시스 쿠페', '소나타', 'K5', '악센트'),
+}
+
+((loc1, (best1, *rest1)),
+ (loc2, (best2, *rest2))) = car_inventory.items()
+
+print(f'{loc1} 최고는 {best1}, 나머지는 {len(rest1)} 종')
+print(f'{loc2} 최고는 {best2}, 나머지는 {len(rest2)} 종')
+
+시내 최고는 그랜저, 나머지는 2 종
+공항 최고는 제네시스 쿠페, 나머지는 3 종
+```
+
+별표식은 항상 list 타입으로 반환하고 언패킹하는 시퀀스에 남은 원소가 없으면 빈 리스트 [] 를 반환한다.
+
+```python
+short_list = [1, 2]
+first, second, *rest = short_list
+
+print(first, second, rest)
+1 2 []
+```

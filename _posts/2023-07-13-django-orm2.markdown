@@ -1,0 +1,218 @@
+---
+title: "SQL을 이해하고 사용하는 Django ORM" #Article title.
+date: 2023-07-13
+category: [PYTHON, DJANGO] #One, more categories or no at all.
+tag: [pycorn, django, python]
+---
+
+__PyCon korea 2022 신동현__
+
+# SQL을 이해하고 사용하는 Django ORM
+
+## 1. 기본 SQL
+
+<aside>
+💡 QuerySet은 하나의 쿼리를 통해 얻은 데이터이다
+
+</aside>
+
+### 호출한 SQL 및 성능을 위한  실행 계획 확인
+
+- QuerySet에 의해 호출된 sql 확인 하는법
+    
+    ```python
+    import sqlparse
+    
+    query = str(queryset.query)
+    print(sqlparse.format(query, reindent=True)
+    ```
+    
+- SQL 실행 계획 확인
+
+```python
+>> print(queryset.explain())
+
+1 SIMPLE User None ALL None None None None 1
+100.09 using filesort
+100.09 using filesort
+```
+
+### Count(), Aggregate()
+
+- count() vs aggregate()
+    - aggregate()
+    
+    ```python
+    >> User.objects.aggregate(Count('id'))
+    # __count는 django default naming
+    # alias를 추가하려면 .aggregate(count=Count('id'))와 같이 사용
+    {"id__count" : 3}
+    
+    SELECT COUNT(id) as id__count
+    FROM User
+    ```
+    
+    - count()
+    
+    ```python
+    >> User.objects.all().count()
+    3
+    
+    SELECT COUNT(*)
+    FROM User
+    ```
+    
+    - `aggregate()` 와 같이 특정 컬럼을 기준으로 집계할 때는 값이 `NULL` 인 레코드는 집계에서 제외되기 때문에, `count(id)` 와 `count(*)` 가 다른 값을 리턴 할 수도 있다
+
+### UNION
+
+`union()` 으로 쿼리셋을 합칠 수 있고, 합치려는 테이블의 컬럼 갯수가 같아야 가능하다
+
+`union()` 은 기본적으로 unique 옵션이 적용되기 때문에, unique 검사가 필요하지 않다면 `all=True` 사용
+
+```sql
+books = Book.objects.all()
+ebooks = Ebook.objects.all()
+
+(SELECT *
+FROM Book) UNION (
+SELECT *
+FROM Ebook)
+```
+
+### ANNOTATE
+
+UNION이 수직으로 테이블을 확장시킨다면, ANNOTATE는 수평으로 확장시킴
+
+```python
+from django.db.models import Value
+
+books = Book.objects.annotate(book_type=Value('book'))
+ebooks = Ebook.objects.annotate(book_type=Value('e-book'))
+```
+
+### F()
+
+컬럼 간의 연산 가능
+
+```python
+from django.db.models import F
+
+Book.objects.annotate(
+	sale_price=F('price')-F('discount')
+	)
+```
+
+```sql
+SELECT 
+	id,
+	title,
+	price,
+	discount,
+	price - discount AS sale_price
+FROM Book
+```
+
+### Only()
+
+SELECT 문에 특정 컬럼만 출력하고 싶은 경우 `only()` 를 사용하면, 인덱스를 활용할 수 있는 경우 더 빠르게 응답됨
+
+### GROUP BY
+
+`values()` ,`annotate()` 를 함꼐 사용하면 GROUP BY로 작동함
+
+```sql
+# values()에는 집합을 구분할 컬럼 지정
+User.objects.values('type').annotate(count=Count('id'))
+
+SELECT 
+	type,
+	COUNT(id) AS count
+FROM
+	User
+GROUP BY
+	type
+```
+
+## 응용
+
+### 1. Index 활용
+
+- 일반적으로 Cardinality가 높은, 즉 유니크한 값의 갯수가 많은 컬럼을 index로 추가하는 것이 좋다
+    - ex) 주민등록번호가 성별 보다 Cardinality가 높음
+- `filter()` , `order_by()`, `values()` 와 같은 조회 및 정렬이 자주 사용 되는 컬럼은 index 추가를 고려해볼만함
+
+### 2. Index 추가
+
+- Meta class에 추가
+    - 각 필드에 옵션으로 지정해줄 수 있지만, 아래와 같이 Meta class로 한번에 관리하는 것을 추천
+    
+    ```python
+    class Foo(models.Model):
+    	...
+    	class Meta:
+    			indexes = [
+    					models.index(fields=['single_column']),
+    					models.index(fields=['multi','column'])
+    					]
+    ```
+    
+- Django Model에 유니크 제약을 걸 경우 자동으로 index가 생성됨
+    
+    ```python
+    class Foo(models.Model):
+    	...
+    	class Meta:
+    			constraints = [
+    					models.UniqueConstraint(fields=['single_column']),
+    					models.UniqueConstraint(fields=['multi','column'])
+    					]
+    ```
+    
+
+### 3. 중복 Index 삭제
+
+데이터 조회 시 index는 하나만 사용될 수 있기 때문에, ForeignKey에 의해 기본적으로 생성되는 인덱스는 불필요하기 때문에, 미리 생성되지 않게 관리
+
+```python
+class Order(models.Model):
+	product = models.ForeignKey(
+			'Procut',
+			on_delete=models.SET_NULL,
+			db_index=False
+			)
+	class Meta:
+			indexes = [
+					models.index(fields=['product','ordered_at'])
+					]
+
+```
+
+### 4. Index를 활용하는 쿼리
+
+index를 추가하기만 해서 무조건 성능이 향상하는 것은 아니기에, index를 잘 설계하는 것만큼이나 잘 동작하도록 쿼리를 날리는 것이 중요
+
+- 조회하는 컬럼을 수정하는 쿼리는 인덱스를 무시함
+    - `__contains(LIKE ‘%..%’)` ,`__year(YEAR(date)`
+- `contains`
+    - `contains` 는 LIKE문으로 변환되는데, 아래와 같은 상황은 ‘Guido’가 포함된 모든 문자로 시작하는 경우를 조회 하기때문에,  name으로 인덱스가 설정되어 있어도 무시된다
+        
+        ```python
+        User.objects.filter(name__contains='Guido')
+        
+        SELECT *
+        FROM User
+        WHERE name LIKE '%Guido%'
+        ```
+        
+    - 그래서 index를 활용할 수 있는 `startswith` 사용을 권장
+        
+        ```python
+        User.objects.filter(name__startswith='Guido')
+        
+        SELECT *
+        FROM User
+        WHERE name LIKE 'Guido%'
+        ```
+        
+- 커버링 인덱스

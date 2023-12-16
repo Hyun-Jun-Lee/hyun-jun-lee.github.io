@@ -1,0 +1,118 @@
+---
+title: "효율적인 메모리 관리를 위한 코드 예시" #Article title.
+date: 2023-06-18
+category: [PYTHON, PYTHON] #One, more categories or no at all.
+tag: [python]
+---
+
+
+💡 __By 커리어리__
+
+
+
+효율적인 코드는 곧 메모리 효율적인 코드 작성을 의미한다. 다루는 데이터의 양이 증가할수록 메모리 관리의 중요성이 커진다.
+
+개발자가 할수 있는 메모리 관리중 가장 중요한 부분은 메모리 할당(memory allocation)이다. 컴퓨터의 실제 or 가상 메모리에 빈 공간 블록을 할당하는 프로세스를 이해하는 것이 중요하다.
+
+- 정적 메모리 할당
+    - `static int a=10` , c/c++
+    - 고정크기로만 정적 배열 선언하고 메모리는 컴파일 할 때 할당
+    - 메모리 재사용 불가
+- 동적 메모리 할당
+    - `int *p; p=new int;` , 단항 연산자 `new` 를 사용하여 배열 선언
+    - 런타임에 메모리 할당
+    - 필요하지 않은 메모리를 비우고 재사용 가능
+
+파이썬은 모든 것이 객체이기 때문에, 동적 메모리 할당이 파이썬 메모리 관리의 핵심이다. 객체가 더이상 사용되지 않으면 파이썬 메모리 관리자가 자동으로 객체를 메모리에서 회수한다.
+
+## 효율적인 파이썬 코드 사례
+
+### list에 원소 추가할 때 join 활용
+
+- BAD
+
+```python
+mymsg=’line1\n’
+mymsg+=’line2\n’
+```
+
+- GOOD
+
+```python
+mymsg=[‘line1’,’line2’]
+‘\n’.join(mymsg)
+```
+
+### 문자열 연산할 때 ‘+’ 사용하지 않기
+
+문자열은 변경할 수 없어서, 문자열에 요소를 추가할 때 마다 파이썬은 새로운 문자열과 새로운 주소를 만들어 새로운 메모리를 할당하기 때문에 ‘+’를 사용하지 않는 것이 좋다.
+
+- BAD
+
+```python
+msg = 'hello' + mymsg + 'world'
+```
+
+- GOOD
+
+```python
+msg = 'hello %s world' % mymsg
+```
+
+## Generator 활용
+
+제터레이터로 함수를 만들면 한번에 모든 항목이 아닌, 한번에 하나의 항목만 반환하는 함수를 만들 수 있다.
+
+그래서 큰 데이터를 불러올 때 , 전체 데이터 집할을 액세스 할 때 까지 기다릴 필요가 없다.
+
+```python
+def __iter__(self):
+    return self._generator()
+    
+def _generator(self):
+    for itm in self.items():
+        yield itm
+```
+
+## 지역변수에 함수 할당
+
+파이썬은 전역변수보다 지역변수를 사용할 때 더욱 효율적
+
+- BAD
+
+```python
+def global_func(x):
+    print(x)
+
+n = 5
+for i in range(n):
+    global_func(i)
+```
+
+- GOOD
+
+```python
+myLocalFunc=myObj.func
+for i in range(n):
+    myLocalFunc(i)
+```
+
+## 내장 함수 및 라이브러리 사용
+
+내장 함수, 라이브러리는 파이썬코드에 맞게 메모리 효율적으로 구현되었기 때문에 가능한 적극 사용 권장
+
+- BAD
+
+```python
+mylist=[]
+for myword in oldlist:
+    mylist.append(myword.upper())
+```
+
+- GOOD
+
+```python
+mylist = list(map(str.lower, oldlist))
+```
+
+`map(function, iterable)` 함수는 이터러블 객체를 받아서 해당 객체의 각 요소에 함수를 적용환 결과를 반환함
