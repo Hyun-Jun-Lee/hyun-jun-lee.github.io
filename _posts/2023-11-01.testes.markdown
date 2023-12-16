@@ -2,7 +2,7 @@
 title: this is test
 date: 2023-11-01 10:00:00
 categories: [test1]
-tags: [test_tag     # TAG names should always be lowercase
+tags: [test_tag]     # TAG names should always be lowercase
 ---
 
 
