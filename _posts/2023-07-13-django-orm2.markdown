@@ -1,7 +1,7 @@
 ---
 title: "SQL을 이해하고 사용하는 Django ORM" #Article title.
 date: 2023-07-13
-category: [PYTHON, DJANGO] #One, more categories or no at all.
+category: [PYTHON, PYCORN] #One, more categories or no at all.
 tag: [pycorn, django, python]
 ---
 
