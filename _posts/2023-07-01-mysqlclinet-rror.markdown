@@ -1,7 +1,7 @@
 ---
 title: "mysqlclinet 설치 오류" #Article title.
 date: 2023-07-16
-category: [ERROR, PYTHON] #One, more categories or no at all.
+category: [ERROR, ERROR] #One, more categories or no at all.
 tag: [error,pymysql]
 ---
 
