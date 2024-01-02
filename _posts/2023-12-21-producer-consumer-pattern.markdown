@@ -43,7 +43,7 @@ RabbitMQ, Kafka 같은 message queue 에 이와 같은 아키텍처 패턴이 �
 
 이런 상황을 해결하기 위한 예시를 real python에서 찾앗다.
 
-```
+```python
 import random 
 
 SENTINEL = object()
@@ -84,7 +84,7 @@ consumer는 pipline에서 메세지를 읽어오고 출력한다. 그리고 SENT
 
 가장 중요한 Pipeline 코드는 아래와 같다.
 
-```
+```python
 class Pipeline:
     """
     Class to allow a single element pipeline between producer and consumer.
@@ -130,7 +130,7 @@ set_message()에서는 producer가 producer_lock.acquire()를 호출하고 self.
 
 위와 같은 코드를 실행하면 결과 값이 아래와 같이 나온다.
 
-```
+```python
 $ ./prodcom_lock.py
 Producer got data 43
 Producer got data 45
@@ -158,7 +158,7 @@ Consumer storing data: 22
 
 동시에 여러개의 값을 pipeline에서 처리하기 위해 Queue를 활용한다. 
 
-```
+```python
 if __name__ == "__main__":
     format = "%(asctime)s: %(message)s"
     logging.basicConfig(format=format, level=logging.INFO,
@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
 threading.Event() 객체는 하나의 객체가 이벤트를 호출할 수 있게하고, 다른 스레드 들이 해당 이벤트를 기다리게한다. 여기서 중요한 부분은 이벤트를 기다리는 스레드들이 현재 진행중인 작업을 중단할 필요 없이 이벤트의 상태를 확인하면된다는 것이다.
 
-```
+```python
 def producer(pipeline, event):
     """Pretend we're getting a number from the network."""
     while not event.is_set():
@@ -191,7 +191,7 @@ def producer(pipeline, event):
 
 이제 producer는 event.is_set()이 될 때까지 반복되고, 더 이상 SENTINEL 값이 필요없다. 즉 이벤트가 설정될 때 까지 계속해서 메세지를 생성하고 파이프라인으로 보낸다. 
 
-```
+```python
 def consumer(pipeline, event):
     """Pretend we're saving a number in the database."""
     while not event.is_set() or not pipeline.empty():
@@ -207,7 +207,7 @@ def consumer(pipeline, event):
 
 consumer는 producer와 같이 이벤트가 is_set()될 때까지 뿐만 아니라 pipeline에 들어 있는 값이 없을 때 까지 반복된다. 여기서 queue에 비어있을 때 까지 consumer가 작업을 처리하는 것이 중요한데, 아직 pipeline 에 메세지가 남아있는데 종료를 하게 되면 새로운 메세지가 아직 전송되지 않은 메세지를 덮어쓰게되고, producer는 queue가 가득차서 메세지를 추가할 수가 없다.
 
-```
+```python
 class Pipeline(queue.Queue):
     def __init__(self):
         super().__init__(maxsize=10)
@@ -229,7 +229,7 @@ pipeline은 Queue의 서브클래스가 되고 초기화 시 queue의 최대 크
 
 이제 위 코드를 실행시키면 병렬 작업이 되어 아래와 같이 실행된다.
 
-```
+```python
 $ ./prodcom_queue.py
 Producer got message: 32
 Producer got message: 51
