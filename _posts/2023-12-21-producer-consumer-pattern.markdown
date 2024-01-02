@@ -5,7 +5,7 @@ category: [PYTHON,] #One, more categories or no at all.
 tag: [Architecture,python, threading]
 ---
 
-# 아키텍처의 필요성
+## 아키텍처의 필요성
 
 내가 아키텍처의 필요성에 대해 느꼇던 상황은 아래와 같다. 
 
@@ -23,7 +23,7 @@ tag: [Architecture,python, threading]
 
 그리고 실제 업무에 활용하기 위해 내가 발견한 패턴은 Producer-Consumer 패턴이다. 
 
-# Producer - Consumer 패턴
+## Producer - Consumer 패턴
 
 병렬 처리를 해야할 작업이 필요해서 찾아보던 중 발견한 아키텍처 패턴이다. AI 쪽에서 방대한 양의 데이터를 학습시키기 위해 자주 사용하는 아키텍처라고 한다.
 
