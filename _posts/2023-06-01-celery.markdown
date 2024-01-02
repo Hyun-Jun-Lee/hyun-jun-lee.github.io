@@ -1,7 +1,7 @@
 ---
 title: "Celery" #Article title.
 date: 2023-06-01
-category: [PYTHON, PYCORN] #One, more categories or no at all.
+category: [PYTHON,] #One, more categories or no at all.
 tag: [pycorn]
 ---
 

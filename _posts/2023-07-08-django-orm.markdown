@@ -1,7 +1,7 @@
 ---
 title: "Django ORM 구조와 원리 최적화 전략" #Article title.
 date: 2023-07-08
-category: [PYTHON, PYCORN] #One, more categories or no at all.
+category: [PYTHON,] #One, more categories or no at all.
 tag: [pycorn, django, python]
 ---
 
