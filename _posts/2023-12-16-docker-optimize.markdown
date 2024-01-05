@@ -98,5 +98,115 @@ dockerfile은 FROM 명령어를 기준으로 작업 공간이 분리되고 이 �
 2. 1단계에서 build한 결과물을 복사해와서 test
 3. 2단계 테스트에서 끝난 결과물을 복사해와서 실행
 
+### 실제 반영
+
+- BEFORE
+```dockerfile
+FROM amd64/python:3.9-slim-buster
+
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ORACLE_HOME=/apps/instantclient_21_10
+ENV LD_LIBRARY_PATH=/apps/instantclient_21_10
+
+
+COPY ./lobster  apps/lobster
+COPY ./servers  apps/servers
+COPY ./testing  apps/testing
+COPY ./requirements  apps/requirements
+WORKDIR /apps
+EXPOSE 9000
+
+RUN python -m venv /py && \
+    /py/bin/pip install --upgrade pip && \
+    apt-get update && apt-get install -y pkg-config && \
+    apt-get clean -y && \
+    apt-get update -y && \
+    apt-get install -y python3-pymysql default-libmysqlclient-dev build-essential manpages-dev xvfb libaio1 unzip python3-dev libffi-dev wget openssl xorg freetds-dev && \
+    mkdir -p /opt/oracle
+
+WORKDIR /opt/oracle
+RUN     apt-get update && apt-get install -y libaio1 wget unzip \
+    && wget https://download.oracle.com/otn_software/linux/instantclient/218000/instantclient-basic-linux.x64-21.8.0.0.0dbru.zip \
+    && unzip instantclient-basic-linux.x64-21.8.0.0.0dbru.zip\
+    && rm -f instantclient-basic-linux.x64-21.8.0.0.0dbru.zip \
+    && cd /opt/oracle/instantclient* \
+    && rm -f *jdbc* *occi* *mysql* *README *jar uidrvci genezi adrci \
+    && echo /opt/oracle/instantclient* > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
+
+WORKDIR /apps
+
+RUN apt-get install -y gdb-multiarch gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+ENV PATH="/py/bin:$PATH"
+
+USER root
+
+
+RUN /py/bin/pip install -r /apps/requirements/requirements.txt
+```
+
+- AFTER
+```dockerfile
+# ---- Base Stage ----
+FROM amd64/python:3.9-slim-buster as base
+
+ENV PYTHONDONTWRITEBYTECODE 1 \
+    PYTHONUNBUFFERED 1 \
+    DEBIAN_FRONTEND=noninteractive \
+    ORACLE_HOME=/apps/instantclient_21_10 \
+    LD_LIBRARY_PATH=/apps/instantclient_21_10 \
+    PATH="/py/bin:$PATH"
+
+WORKDIR /opt/oracle
+RUN apt-get update && apt-get install -y --no-install-recommends libaio1 wget unzip  &&\
+    wget https://download.oracle.com/otn_software/linux/instantclient/218000/instantclient-basic-linux.x64-21.8.0.0.0dbru.zip  &&\
+    unzip instantclient-basic-linux.x64-21.8.0.0.0dbru.zip &&\
+    rm -f instantclient-basic-linux.x64-21.8.0.0.0dbru.zip  &&\
+    cd /opt/oracle/instantclient*  &&\
+    rm -f *jdbc* *occi* *mysql* *README *jar uidrvci genezi adrci  &&\
+    echo /opt/oracle/instantclient* > /etc/ld.so.conf.d/oracle-instantclient.conf  &&\
+    ldconfig
+
+# ---- Build Stage ----
+FROM base as builder
+
+RUN python -m venv /py && \
+    /py/bin/pip install —upgrade pip && \
+    apt-get update && apt-get install -y —no-install-recommends pkg-config python3-pymysql default-libmysqlclient-dev build-essential manpages-dev xvfb libaio1 unzip python3-dev libffi-dev wget openssl xorg freetds-dev && \
+
+
+COPY ./requirements  apps/requirements
+RUN /py/bin/pip install -r /apps/requirements/requirements.txt
+
+COPY ./lobster  apps/lobster
+COPY ./servers  apps/servers
+COPY ./testing  apps/testing
+
+# —— Production Stage ——
+FROM base as production
+
+WORKDIR /apps
+
+# 빌드 스테이지에서 필요한 파일만 복사
+COPY ——from=builder /py /py
+COPY ——from=builder /apps/lobster /apps/lobster
+COPY ——from=builder /apps/servers /apps/servers
+COPY ——from=builder /apps/testing /apps/testing
+
+# RUN apt-get install -y gdb-multiarch gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+EXPOSE 9000
+USER root
+```
+
+- builder 스테이지에서 필요한 모든 라이브러리, 의존성을 설치하고, production 에서 실제 실행에 필요한 파일만 복사하는 방식으로 이미지 크기를 줄임
+- 애플리케이션 코드와 필요한 파일들을 빌드 스테이지에서 프로덕션 이미지로 효율적으로 복사
+
+원리 dockerfile로 빌드한 이미지의 용량은 1.7GB였는데 절반 이상으로 줄임.
+
+
 ### Refernce
 - https://docs.docker.com/build/cache/
