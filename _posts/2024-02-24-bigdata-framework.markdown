@@ -1,6 +1,6 @@
 ---
-title: "대규모 분산처리 프레임워크 정리"
-date: 2024-01-10
+title: "[빅.탱.지] 대규모 분산처리 프레임워크 정리"
+date: 2024-02-25
 category: [DATA,]
 tag: [data engineer,bigdata]
 ---
