@@ -1,6 +1,6 @@
 ---
 title: "Python Domain Driven Design" #Article title.
-date: 2023-07-13
+date: 2024-03-16
 category: [PYTHON, ]
 tag: [pycorn, DDD, Architecture,python]
 ---
@@ -424,6 +424,7 @@ def get_reservation(
 
 
 
-> Reference 
+## Reference 
     - https://github.com/qu3vipon/python-ddd/
+    
     - https://blog.doctor-cha.com/introduction-to-domain-driven-design-for-everyone
