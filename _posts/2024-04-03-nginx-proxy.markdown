@@ -81,6 +81,23 @@ ex) 소수의 요리사(워커 프로세스)가 여러 고객(클라이언트의
 - `fs.file-max` 값은 시스템 전체의 모든 프로세스에 대해 열 수 있는 파일의 최대 수를 결정함.
     - `/etc/sysctl.conf' 파일에서 설정 `fs.file-max = 10000` 후 sysctl 재시작 `sudo sysctl -p`
 
+2. Nginx 워커 프로세스와 백로그
+
+nginx.conf에서 워커프로세스 관련 설정
+
+- `worker_process` : cpu core 수에 따라 설정하고 20% 정도는 os를 위해 남겨둬야함, `auto`로 설정하면 nginx가 자동으로 cpu 코어 수에 맞춰 설정
+- `worker_rlimit_nofile` : 작업 프로세스가 열 수 있는 파일의 수를 제한
+- `worker_connections` : 동시에 받을 수 있는 요청의 수
+- `multi_accept on` : 요청을 순차적으로 받는 것이 아니라 동시에 
+
+백로그는 동시에 대기할 수 있는 연결 요청의 최대 수를 지정
+
+```
+server {
+    listen 80 backlog=2048;
+    # 기타 서버 설정...
+}
+```
 
 
 > Reference
