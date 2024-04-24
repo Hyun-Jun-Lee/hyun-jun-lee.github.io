@@ -102,3 +102,39 @@ analyzer는 클러스터나 특정 인덱스에 의해 정의되고 관련된 �
 - Tokenizer : 정규화된 텍스트는 토크나이저에 의해 개별 토큰으로 분리되는데, ES에서는 다양한 토크나이저를 제공함. 가장 기본적인 토크나이저는 공백을 기준으로 분리하는 `standard`, 특수한 문자를 구분자로 사용하는 `pattern`
 
 - Token Filtering : 토큰화 과정 이후 'a', 'the' 와 같은 불용어(Stop Word), 동의어(Synonym) 등을 제거하는 역활
+
+
+## ElasticSearch 에서의 Update
+
+전 회사 프로젝트에서 ElasticSearch를 운영할 때, Heap Memory가 부족하다거나 log가 너무 많이 쌓여서 문제가 된 적이 있다. 
+
+원인이 무엇인지 파악하다가 ElasticSearch에서는 document를 update 할 때, 해당 데이터가 실제로 저장된 Segement에서 update 되는 것이 아니라 업데이트된 document는 새로운 segement에 저장되고 기존 segement는 삭제되는 방식으로 처리된 다는 것을 알게됬다. 
+
+```
+{
+  "name": "맛있는 식당",
+  "location": "서울",
+  "cuisine": "한식",
+  "menus": [
+    {
+      "name": "김치찌개",
+      "price": 8000,
+      "ingredients": ["김치", "돼지고기", "두부"]
+    },
+    {
+      "name": "된장찌개",
+      "price": 7500,
+      "ingredients": ["된장", "콩나물", "호박"]
+    }
+  ]
+}
+
+```
+
+예를들어, 위의 예시에서 "김치찌개" 를 "부대찌개"로 변경한다고 가정해보면 Index에서 해당 Document는 삭제되고 새로 생성되는 것이다.
+위와 같이 중첩 구조를 사용할 때, `nested` 타입을 지정할 수 있는데 해당 타입을 지정하면 중첩된 객체는 개별 문서로 취급되지만 상위 Document의 Segement에 데이터가 저장되기 때문에
+상위, 하위 document 중 하나만 변경하더라도 모두 새로운 segement에 저장된다.
+
+회사에서 운영 중인 ETL 파이프라인은 DB 로그를 읽어와 ElasticSearch에 저장하고, 이후 해당 데이터를 서비스 DB로 이전하는 과정에서 ElasticSearch에 대한 업데이트 작업을 수행합니다. 이러한 절차를 거친다면, 로그를 매번 읽어올 때마다 상당한 양의 쓰기(Write) 작업이 발생했을 것으로 추정됩니다.
+
+어떻게 이 문제를 해결 할 수 있을까 검색하다보니 비슷한 상황을 해결한 글을 발견했다! https://techblog.woowahan.com/7425/
