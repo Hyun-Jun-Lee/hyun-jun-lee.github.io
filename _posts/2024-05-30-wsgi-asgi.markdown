@@ -50,7 +50,9 @@ FastAPI를 배포할 때 Uvicorn을 단독으로 사용하는 것 보다 Gunicor
 `gunicorn -w 4 -k uvicorn.workers.UvicornWorker`
 
 Gunicorn은 설정 된 수 4개 만큼 Worker 프로세스를 생성하고, 각 프로세스는 `uvicorn.workers.UvicornWorker` 클래스를 사용해서 Uvicorn 인스턴스를 생성한다.
+
 클라이언트 요청이 들어오면, Gunicorn은 해당 요청을 Worker 프로세스 중 하나에 할당하고, 할당 된 Worker 프로세스 내의 Uvicorn 인스턴스가 요청을 처리하고 응답을 반환한다.
+
 Gunicorn은 Worker 프로세스 간의 로드밸런싱을 자동으로 수행행서 각 프로세스에 균등하게 요청을 분배한다.
 
 
