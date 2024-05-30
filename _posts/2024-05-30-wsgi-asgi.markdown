@@ -34,6 +34,26 @@ Gunicorn은 주로 Django, Flask와 같이 WSGI 기반 프레임워크와 사용
 그런데 FastAPI에서 모두 동기 함수로만 개발해도 Uvicorn이 필요할까? 라는 궁금증이 들어 찾아보니
 애초에 Uvicorn은 각 요청을 coroutine으로 처리하기 때문에, I/O 작업이 있을 시 자동으로 비동기 처리함.
 
+### Gunicorn + Uvicorn
+
+FastAPI를 배포할 때 Uvicorn을 단독으로 사용하는 것 보다 Gunicorn과 함께 사용하는 것이 일반적으로 더 좋은 성능을 보장한다고 한다.
+
+- Uvicorn 단독 실행의 한계
+    - Python GIL 특성으로 인해 한 번에 하나의 쓰레드만 python 코드를 실행할 수 있기 때문에, CPU 연산이 많은 경우 병목 현상이 발생함
+    - 단일 프로세스/단일 스레드로 동작하기 때문에 멀티 코어CPU의 모든 코어를 활용할 수 없음
+
+- Gunicorn + Uvicorn 혼합 실행의 장점
+    - Gunicorn은 여러 개의 worker 프로세스를 생성하여 각 프로세스가 독립적으로 요청을 처리하기 때문에 멀티 코어 CPU 제대로 활용 가능
+    - 각 Worker 프로세스는 Uvicorn을 통해 비동기 작업 처리
+
+
+`gunicorn -w 4 -k uvicorn.workers.UvicornWorker`
+
+Gunicorn은 설정 된 수 4개 만큼 Worker 프로세스를 생성하고, 각 프로세스는 `uvicorn.workers.UvicornWorker` 클래스를 사용해서 Uvicorn 인스턴스를 생성한다.
+클라이언트 요청이 들어오면, Gunicorn은 해당 요청을 Worker 프로세스 중 하나에 할당하고, 할당 된 Worker 프로세스 내의 Uvicorn 인스턴스가 요청을 처리하고 응답을 반환한다.
+Gunicorn은 Worker 프로세스 간의 로드밸런싱을 자동으로 수행행서 각 프로세스에 균등하게 요청을 분배한다.
+
+
 
 ## 성능 비교
 
